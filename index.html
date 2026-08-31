@@ -108,6 +108,7 @@ footer .hint{margin-left:auto;font-size:12px;color:var(--ink3);text-align:right;
     </div>
     <div class="btns">
       <button class="primary" id="btnShare">分享成績</button>
+      <button id="btnSaveImg">存成績圖</button>
       <button id="btnAgain">再畫一次</button>
       <button id="btnNext">練習下一題</button>
     </div>
@@ -406,16 +407,80 @@ $("#btnClear").onclick=()=>{if(done)return;pts=[];render()};
 $("#btnAgain").onclick=()=>{pts=[];done=false;$("#result").classList.remove("show");render()};
 $("#btnNext").onclick=()=>{practice=true;$("#puzzleNo").textContent="練習";loadRound(pool[Math.floor(Math.random()*pool.length)])};
 $("#btnPractice").onclick=()=>$("#btnNext").onclick();
-$("#btnShare").onclick=async()=>{
+function shareText(){
   const n=$("#puzzleNo").textContent;
   const blocks=(p=>p>=95?"🟩🟩🟩🟩🟩":p>=85?"🟩🟩🟩🟩⬜":p>=70?"🟩🟩🟩⬜⬜":p>=50?"🟩🟩⬜⬜⬜":"🟩⬜⬜⬜⬜")(cur.lastPct);
   const devTxt=cur.lastDev<10?cur.lastDev.toFixed(1):Math.round(cur.lastDev);
   const modeTag=mode==="easy"?"（簡單模式）":"";
-  const txt=`畫界台灣 ${n}${modeTag}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（平均偏 ${devTxt} km）\n${location.origin+location.pathname}`;
+  return`畫界台灣 ${n}${modeTag}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（平均偏 ${devTxt} km）\n${location.origin+location.pathname}`;
+}
+/* ── 成績卡：揭曉畫面合成一張可分享 PNG（1080×1350，純客戶端）── */
+function buildShareCard(){
+  const CW=1080,CH=1350,M=64;
+  const c=document.createElement("canvas");c.width=CW;c.height=CH;
+  const g=c.getContext("2d");
+  const sans=getCss("--sans");
+  g.fillStyle=getCss("--paper");g.fillRect(0,0,CW,CH);
+  // 標題列：畫界台灣 #N ─────── 縣市對
+  g.textBaseline="alphabetic";
+  g.textAlign="left";g.fillStyle=getCss("--ink");g.font=`800 54px ${sans}`;
+  g.fillText("畫界台灣",M,118);
+  const tw=g.measureText("畫界台灣").width;
+  g.fillStyle=getCss("--ink3");g.font=`600 40px ${sans}`;
+  g.fillText(`${$("#puzzleNo").textContent}${mode==="easy"?"・簡單模式":""}`,M+tw+22,118);
+  g.textAlign="right";g.fillStyle=getCss("--ink");g.font=`700 44px ${sans}`;
+  g.fillText(`${cname(cur.a)} × ${cname(cur.b)}`,CW-M,118);
+  // 分數列
+  g.textAlign="left";g.fillStyle=getCss("--me");g.font=`800 148px ${sans}`;
+  g.fillText(cur.lastPct+"%",M,290);
+  const sw=g.measureText(cur.lastPct+"%").width;
+  g.fillStyle=getCss("--ink");g.font=`700 54px ${sans}`;
+  g.fillText(cur.lastGrade,M+sw+30,290);
+  // 地圖快照：直接取畫面 canvas（已是揭曉狀態），等比置中
+  const box={x:M,y:330,w:CW-2*M,h:830};
+  const s=Math.min(box.w/cv.width,box.h/cv.height);
+  const dw=cv.width*s,dh=cv.height*s;
+  g.drawImage(cv,box.x+(box.w-dw)/2,box.y+(box.h-dh)/2,dw,dh);
+  // 底部：偏差＋網址
+  const devTxt=cur.lastDev<10?cur.lastDev.toFixed(1):Math.round(cur.lastDev);
+  const km2=cur.lastKm2<10?cur.lastKm2.toFixed(1):Math.round(cur.lastKm2);
+  g.fillStyle=getCss("--ink2");g.font=`500 38px ${sans}`;
+  g.fillText(`平均偏離真實界線 ${devTxt} km（≈ 劃錯 ${km2} km²）`,M,1244);
+  g.fillStyle=getCss("--ink3");g.font=`500 36px ${getCss("--mono")}`;
+  g.fillText(location.origin+location.pathname,M,1302);
+  return c;
+}
+const cardBlob=()=>new Promise(r=>buildShareCard().toBlob(r,"image/png"));
+$("#btnShare").onclick=async()=>{
+  const txt=shareText();
+  // 能「圖＋文」一起就一起；只能擇一→文字優先（Yo 裁定）
+  let file=null;
+  try{file=new File([await cardBlob()],"huajie-taiwan.png",{type:"image/png"})}catch{}
+  if(file&&navigator.share&&navigator.canShare&&navigator.canShare({files:[file],text:txt})){
+    try{await navigator.share({text:txt,files:[file]});return}
+    catch(e){if(e.name==="AbortError")return}   // 使用者取消就停，其他錯往下退
+  }
   try{
     if(navigator.share)await navigator.share({text:txt});
     else{await navigator.clipboard.writeText(txt);toast("已複製，貼去炫耀吧")}
   }catch{}
+};
+$("#btnSaveImg").onclick=async()=>{
+  try{
+    const blob=await cardBlob();
+    if(navigator.clipboard&&window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
+      toast("成績圖已複製，直接貼上");return;
+    }
+    throw 0;
+  }catch{
+    try{
+      const a=document.createElement("a");
+      a.href=buildShareCard().toDataURL("image/png");
+      a.download=`畫界台灣-${$("#puzzleNo").textContent.replace("#","")}.png`;
+      a.click();toast("成績圖已下載");
+    }catch{toast("這個瀏覽器存不了圖")}
+  }
 };
 
 /* ── 啟動 ── */
@@ -444,6 +509,9 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
     finish();
     document.title=`TEST ${testMode} ${mode} score=${cur.lastPct}`;
     if(q.get("debug")){const d=computeScore().dbg;document.title+=" "+Object.entries(d).map(([k,v])=>`${k}=${v.toFixed(2)}`).join(" ")}
+    if(q.get("card")){const img=new Image();img.src=buildShareCard().toDataURL("image/png");
+      img.style.cssText="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#555;z-index:99";
+      document.body.appendChild(img)}
   },600)}
 }).catch(e=>{$("#task").textContent="地圖載入失敗："+e.message});
 window.addEventListener("resize",resize);

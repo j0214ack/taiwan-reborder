@@ -26,6 +26,7 @@
 
 - 31 組可玩配對（台灣本島所有相鄰縣市，扣除兩組飛地：台北市╳新北市、嘉義市╳嘉義縣——它們的界線是封閉環，沒辦法「畫一條線」）
 - 每日題目以台北時間換日，全站同題；「練習模式」可隨機加練
+- 分享：純客戶端合成 1080×1350 成績卡 PNG（揭曉畫面＋分數＋偏差）。系統分享面板能「圖＋文」就一起送；只能擇一時**文字優先**；「存成績圖」可複製到剪貼簿或下載。無資料庫、無上傳
 - 純前端單檔 `index.html`，D3 + topojson-client（CDN），無後端、無追蹤
 - 圖資：[taiwan-atlas](https://github.com/dkaoster/taiwan-atlas)（內政部縣市界 TopoJSON）
 
@@ -35,7 +36,7 @@
 python3 -m http.server 8000   # 開 http://localhost:8000
 ```
 
-開發驗證鉤子：`?test=perfect|offset|chord`（沿真實界線重畫應得 100%／整條偏移驗證梯度／兩端拉直線驗證天真策略拿低分），可加 `&mode=easy|free` 強制模式、`&off=<px>` 調偏移量、`&debug=1` 在標題印出計分內部數值。
+開發驗證鉤子：`?test=perfect|offset|chord`（沿真實界線重畫應得 100%／整條偏移驗證梯度／兩端拉直線驗證天真策略拿低分），可加 `&mode=easy|free` 強制模式、`&off=<px>` 調偏移量、`&debug=1` 在標題印出計分內部數值、`&card=1` 疊出成績卡供目檢。
 
 ## License
 
