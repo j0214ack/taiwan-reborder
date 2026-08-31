@@ -451,13 +451,15 @@ function buildShareCard(){
   const s=Math.min(box.w/cv.width,box.h/cv.height);
   const dw=cv.width*s,dh=cv.height*s;
   g.drawImage(cv,box.x+(box.w-dw)/2,box.y+(box.h-dh)/2,dw,dh);
-  // 底部：偏差＋網址
+  // 底部：偏差＋網址＋出處
   const devTxt=cur.lastDev<10?cur.lastDev.toFixed(1):Math.round(cur.lastDev);
   const km2=cur.lastKm2<10?cur.lastKm2.toFixed(1):Math.round(cur.lastKm2);
   g.fillStyle=getCss("--ink2");g.font=`500 38px ${sans}`;
-  g.fillText(`平均偏離真實界線 ${devTxt} km（≈ 劃錯 ${km2} km²）`,M,1244);
+  g.fillText(`平均偏離真實界線 ${devTxt} km（≈ 劃錯 ${km2} km²）`,M,1226);
   g.fillStyle=getCss("--ink3");g.font=`500 36px ${getCss("--mono")}`;
-  g.fillText(location.origin+location.pathname,M,1302);
+  g.fillText(location.origin+location.pathname,M,1282);
+  g.fillStyle=getCss("--ink3");g.font=`400 26px ${sans}`;
+  g.fillText("本 App 靈感來源自 reborder.app",M,1326);
   return c;
 }
 const cardBlob=()=>new Promise(r=>buildShareCard().toBlob(r,"image/png"));
