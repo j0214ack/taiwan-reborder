@@ -142,6 +142,7 @@ let topo,counties,geoms,pool,cur=null;
 let drawing=false,pts=[],done=false,practice=false;
 /* 模式：free＝原版自由畫（預設）；easy＝顯示端點錨點 */
 let mode=localStorage.getItem("huajie.mode")==="easy"?"easy":"free";
+let revealT0=-1e9;                         // 揭曉劃線動畫起點（-1e9＝視為已播完）
 
 /* ── 日期（Asia/Taipei）與每日題號 ── */
 function taipeiToday(){
@@ -196,6 +197,8 @@ function fit(){
   path=d3.geoPath(proj,ctx);
   cur.borderPx=cur.borderGeo.map(p=>proj(p));
   anchors=[cur.borderPx[0],cur.borderPx[cur.borderPx.length-1]];
+  cur.borderCum=[0];
+  for(let i=1;i<cur.borderPx.length;i++)cur.borderCum.push(cur.borderCum[i-1]+dist(cur.borderPx[i-1],cur.borderPx[i]));
   // 計分脈絡（皆隨視窗尺寸重算）
   cur.kmPerPx=cur.Lkm/Math.max(1e-6,polyLen(cur.borderPx));
   const bb=d3.geoPath(proj).bounds(cur.unionFeat);
@@ -245,18 +248,33 @@ function render(){
   ctx.strokeStyle=getCss("--landline");ctx.lineWidth=1.6;ctx.lineJoin="round";ctx.stroke();
 
   if(done){
-    // 揭曉：偏差區塊（口袋 ∩ 聯集）。自由畫的線頭尾不連錨點，先接到界線端點再閉合
-    ctx.save();
-    drawGeo(cur.unionFeat);ctx.clip();
-    ctx.beginPath();
-    pts.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
-    for(let k=cur.borderPx.length-1;k>=0;k--)ctx.lineTo(cur.borderPx[k][0],cur.borderPx[k][1]);
-    ctx.closePath();
-    ctx.fillStyle=getCss("--wrong");ctx.fill("evenodd");
-    ctx.restore();
-    // 真實界線
-    ctx.beginPath();
-    cur.borderPx.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+    // 揭曉動畫：真實界線先劃線（0.9s easeOut），偏差區塊再淡入（0.75→1.15s）
+    const el=performance.now()-revealT0;
+    const lp=1-Math.pow(1-Math.min(1,el/900),3);
+    const pa=Math.min(1,Math.max(0,(el-750)/400));
+    if(pa>0){
+      // 偏差區塊（口袋 ∩ 聯集）。自由畫的線頭尾不連錨點，先接到界線端點再閉合
+      ctx.save();ctx.globalAlpha=pa;
+      drawGeo(cur.unionFeat);ctx.clip();
+      ctx.beginPath();
+      pts.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+      for(let k=cur.borderPx.length-1;k>=0;k--)ctx.lineTo(cur.borderPx[k][0],cur.borderPx[k][1]);
+      ctx.closePath();
+      ctx.fillStyle=getCss("--wrong");ctx.fill("evenodd");
+      ctx.restore();
+    }
+    // 真實界線（依弧長劃到 lp）
+    const cum=cur.borderCum,target=lp*cum[cum.length-1];
+    ctx.beginPath();ctx.moveTo(cur.borderPx[0][0],cur.borderPx[0][1]);
+    for(let i=1;i<cur.borderPx.length;i++){
+      if(cum[i]<=target)ctx.lineTo(cur.borderPx[i][0],cur.borderPx[i][1]);
+      else{
+        const seg=cum[i]-cum[i-1],f=seg?(target-cum[i-1])/seg:0;
+        ctx.lineTo(cur.borderPx[i-1][0]+(cur.borderPx[i][0]-cur.borderPx[i-1][0])*f,
+                   cur.borderPx[i-1][1]+(cur.borderPx[i][1]-cur.borderPx[i-1][1])*f);
+        break;
+      }
+    }
     ctx.strokeStyle=getCss("--truth");ctx.lineWidth=2.6;ctx.setLineDash([7,5]);ctx.stroke();ctx.setLineDash([]);
   }
   // 使用者的線
@@ -373,6 +391,23 @@ function computeScore(){
   // 綜合偏差：形狀對應＋整體貼合；P90 只留小權重（彎折界線上它對真人太兇）
   const D=0.40*corrKm+0.45*chamKm+0.15*p90Km;
   let base=Math.exp(-Math.max(0,D-cur.gKm)/cur.tauKm);
+  // 形狀相關（Yo 弦軸提案定案版）：弦當 X 軸、沿弧長取帶符號垂距得兩條「水位曲線」，
+  // 算皮爾森相關 r。直線的水位是水平線→r=0；界線自己近直線的題目（沒形狀可考）跳過。
+  // 地板 0.85＝Yo 刻度：彎題直線亂猜落 ~50，不重罰。
+  const A0=cur.borderPx[0],A1=cur.borderPx[cur.borderPx.length-1];
+  const ax=A1[0]-A0[0],ay=A1[1]-A0[1],al=Math.hypot(ax,ay)||1;
+  const yOf=p=>((p[0]-A0[0])*-ay+(p[1]-A0[1])*ax)/al;
+  const yB=B.map(yOf),yU=U.map(yOf);
+  if(corrR<corrF)yU.reverse();
+  const mB=meanOf(yB),mU=meanOf(yU);
+  let sBB=0,sUU=0,sBU=0;
+  for(let i=0;i<yB.length;i++){const a=yB[i]-mB,b=yU[i]-mU;sBB+=a*a;sUU+=b*b;sBU+=a*b}
+  const stdBKm=Math.sqrt(sBB/yB.length)*K;
+  let shapeR=1;
+  if(stdBKm>2*cur.gKm){
+    shapeR=sUU>1e-9?Math.max(0,sBU/Math.sqrt(sBB*sUU)):0;
+    base*=0.85+0.15*shapeR;
+  }
   // 自由畫加兩道門：端點準度（起訖位置也是考題）與覆蓋率
   let endKm=0,cov=1;
   if(mode==="free"){
@@ -389,7 +424,7 @@ function computeScore(){
     meanDevKm:chamKm,
     areaKm2:chamKm*cur.Lkm,      // ≈ ∫偏移 ds，當分享哏不當分數
     endKm,cov,
-    dbg:{corrKm,chamKm,p90Km,D,gKm:cur.gKm,tauKm:cur.tauKm,dChordKm:cur.dChordKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
+    dbg:{corrKm,chamKm,p90Km,D,shapeR,stdBKm,gKm:cur.gKm,tauKm:cur.tauKm,dChordKm:cur.dChordKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
   };
 }
 function finish(){
@@ -405,7 +440,14 @@ function finish(){
   $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>（≈ 劃錯 ${km2} km² 的領土）${extra}`;
   $("#result").classList.add("show");
   cur.lastPct=pct;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
+  revealT0=performance.now();
+  requestAnimationFrame(stepReveal);
   render();
+}
+function stepReveal(){
+  if(!done)return;
+  render();
+  if(performance.now()-revealT0<1300)requestAnimationFrame(stepReveal);
 }
 
 /* ── 工具 ── */
@@ -437,6 +479,7 @@ function shareText(){
 }
 /* ── 成績卡：揭曉畫面合成一張可分享 PNG（1080×1350，純客戶端）── */
 function buildShareCard(){
+  if(done){revealT0=-1e9;render()}          // 動畫未播完就分享→先跳到完成狀態再快照
   const CW=1080,CH=1350,M=64;
   const c=document.createElement("canvas");c.width=CW;c.height=CH;
   const g=c.getContext("2d");
@@ -542,9 +585,9 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
     finish();
     document.title=`TEST ${testMode} ${mode} score=${cur.lastPct}`;
     if(q.get("debug")){const d=computeScore().dbg;document.title+=" "+Object.entries(d).map(([k,v])=>`${k}=${v.toFixed(2)}`).join(" ")}
-    if(q.get("card")){const img=new Image();img.src=buildShareCard().toDataURL("image/png");
+    if(q.get("card"))setTimeout(()=>{const img=new Image();img.src=buildShareCard().toDataURL("image/png");
       img.style.cssText="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#555;z-index:99";
-      document.body.appendChild(img)}
+      document.body.appendChild(img)},1500)
   },600)}
 }).catch(e=>{$("#task").textContent="地圖載入失敗："+e.message});
 window.addEventListener("resize",resize);
