@@ -528,7 +528,13 @@ function buildShareCard(){
   return c;
 }
 const cardBlob=()=>new Promise(r=>buildShareCard().toBlob(r,"image/png"));
-$("#btnShare").onclick=async()=>{
+// 產圖有幾百 ms 延遲：按下後鈕面顯示 loading（Yo 2026-08-31）
+async function withBusy(btn,fn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent="⏳ 產圖中…";
+  try{await fn()}finally{btn.disabled=false;btn.textContent=orig}
+}
+$("#btnShare").onclick=()=>withBusy($("#btnShare"),async()=>{
   const txt=shareText();
   // 能「圖＋文」一起就一起；只能擇一→文字優先（Yo 裁定）
   let file=null;
@@ -541,8 +547,10 @@ $("#btnShare").onclick=async()=>{
     if(navigator.share)await navigator.share({text:txt});
     else{await navigator.clipboard.writeText(txt);toast("已複製，貼去炫耀吧")}
   }catch{}
-};
-$("#btnSaveImg").onclick=async()=>{
+});
+// 手機（粗指標）share sheet 本來就有「儲存影像」，且 ClipboardItem/download 在手機不可靠→整顆藏掉（Yo 2026-08-31）
+if(matchMedia("(pointer:coarse)").matches)$("#btnSaveImg").style.display="none";
+$("#btnSaveImg").onclick=()=>withBusy($("#btnSaveImg"),async()=>{
   try{
     const blob=await cardBlob();
     if(navigator.clipboard&&window.ClipboardItem){
@@ -558,7 +566,7 @@ $("#btnSaveImg").onclick=async()=>{
       a.click();toast("成績圖已下載");
     }catch{toast("這個瀏覽器存不了圖")}
   }
-};
+});
 
 /* ── 啟動 ── */
 fetch("counties-10t.json").then(r=>r.json()).then(t=>{
