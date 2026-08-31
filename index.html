@@ -117,7 +117,8 @@ footer .hint{margin-left:auto;font-size:12px;color:var(--ink3);text-align:right;
 <footer>
   <button id="btnClear">重畫</button>
   <button id="btnPractice">練習模式</button>
-  <div class="hint" id="hint">從 ● 一筆畫到 ●</div>
+  <button id="btnMode">簡單模式：關</button>
+  <div class="hint" id="hint"></div>
 </footer>
 
 <script>
@@ -127,6 +128,8 @@ const EPOCH="2026-08-12";                  // 第 1 題的日期（台北時間�
 const R_EARTH=6371;                        // km
 let topo,counties,geoms,pool,cur=null;
 let drawing=false,pts=[],done=false,practice=false;
+/* 模式：free＝原版自由畫（預設）；easy＝顯示端點錨點 */
+let mode=localStorage.getItem("huajie.mode")==="easy"?"easy":"free";
 
 /* ── 日期（Asia/Taipei）與每日題號 ── */
 function taipeiToday(){
@@ -181,6 +184,21 @@ function fit(){
   path=d3.geoPath(proj,ctx);
   cur.borderPx=cur.borderGeo.map(p=>proj(p));
   anchors=[cur.borderPx[0],cur.borderPx[cur.borderPx.length-1]];
+  // 計分脈絡（皆隨視窗尺寸重算）
+  cur.kmPerPx=cur.Lkm/Math.max(1e-6,polyLen(cur.borderPx));
+  const bb=d3.geoPath(proj).bounds(cur.unionFeat);
+  cur.extentKm=Math.hypot(bb[1][0]-bb[0][0],bb[1][1]-bb[0][1])*cur.kmPerPx;
+  cur.gKm=0.008*cur.extentKm;                       // 手繪精度寬容區
+  const B=resampleN(cur.borderPx,128), A=anchors;
+  const dChordPx=B.reduce((s,p)=>s+segDist(p,A[0],A[1]),0)/B.length;
+  cur.dChordKm=dChordPx*cur.kmPerPx;                // 這題「直線亂猜」的平均偏移
+  cur.tauKm=Math.max(cur.gKm,cur.dChordKm);         // 難度尺度
+}
+function haversineKm(p,q){
+  const rad=Math.PI/180;
+  const dLat=(q[1]-p[1])*rad, dLon=(q[0]-p[0])*rad;
+  const s=Math.sin(dLat/2)**2+Math.cos(p[1]*rad)*Math.cos(q[1]*rad)*Math.sin(dLon/2)**2;
+  return 2*R_EARTH*Math.asin(Math.sqrt(s));
 }
 function loadRound(pair){
   const [i,j]=pair;
@@ -189,17 +207,20 @@ function loadRound(pair){
   const mesh=borderOf(a,b);
   // 取最長線段（資料驗證全為單段，此為保險）
   const line=mesh.coordinates.slice().sort((p,q)=>q.length-p.length)[0];
+  let Lkm=0;
+  for(let k=1;k<line.length;k++)Lkm+=haversineKm(line[k-1],line[k]);
   cur={a,b,
     unionGeom:union,
     unionFeat:{type:"Feature",geometry:union},
     featA:{type:"Feature",geometry:topojson.merge(topo,[a])},
     featB:{type:"Feature",geometry:topojson.merge(topo,[b])},
     borderGeo:line,
+    Lkm,
     unionKm2:d3.geoArea(union)*R_EARTH*R_EARTH,
   };
   pts=[];done=false;$("#result").classList.remove("show");
   $("#task").innerHTML=`<b>${cname(a)}</b><span class="vs">×</span><b>${cname(b)}</b> 之間的界線被擦掉了——憑印象把它畫回來。`;
-  fit();render();
+  fit();render();updateHint();
 }
 
 /* ── 渲染 ── */
@@ -212,7 +233,7 @@ function render(){
   ctx.strokeStyle=getCss("--landline");ctx.lineWidth=1.6;ctx.lineJoin="round";ctx.stroke();
 
   if(done){
-    // 揭曉：劃錯區塊（even-odd 口袋 ∩ 聯集）
+    // 揭曉：偏差區塊（口袋 ∩ 聯集）。自由畫的線頭尾不連錨點，先接到界線端點再閉合
     ctx.save();
     drawGeo(cur.unionFeat);ctx.clip();
     ctx.beginPath();
@@ -232,11 +253,13 @@ function render(){
     pts.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
     ctx.strokeStyle=getCss("--me");ctx.lineWidth=3;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();
   }
-  // 端點
-  for(const a of anchors){
-    ctx.beginPath();ctx.arc(a[0],a[1],7,0,7);ctx.fillStyle="#FDFCF8";ctx.fill();
-    ctx.lineWidth=2.4;ctx.strokeStyle=getCss("--me");ctx.stroke();
-    ctx.beginPath();ctx.arc(a[0],a[1],2.6,0,7);ctx.fillStyle=getCss("--me");ctx.fill();
+  // 端點錨點：只有簡單模式顯示（自由畫模式下「起訖在哪」本身是考題）；揭曉後兩種模式都顯示
+  if(mode==="easy"||done){
+    for(const a of anchors){
+      ctx.beginPath();ctx.arc(a[0],a[1],7,0,7);ctx.fillStyle="#FDFCF8";ctx.fill();
+      ctx.lineWidth=2.4;ctx.strokeStyle=getCss(done&&mode==="free"?"--truth":"--me");ctx.stroke();
+      ctx.beginPath();ctx.arc(a[0],a[1],2.6,0,7);ctx.fillStyle=getCss(done&&mode==="free"?"--truth":"--me");ctx.fill();
+    }
   }
   // 縣市名（揭曉前放質心，揭曉後不變）
   ctx.font=`600 ${Math.max(15,Math.min(19,W/22))}px ${getCss("--sans")}`;
@@ -251,15 +274,42 @@ function render(){
 }
 function getCss(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
 
+/* ── 幾何工具（計分共用）── */
+const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);
+function segDist(p,a,b){
+  const vx=b[0]-a[0],vy=b[1]-a[1];
+  const t=Math.max(0,Math.min(1,((p[0]-a[0])*vx+(p[1]-a[1])*vy)/(vx*vx+vy*vy||1)));
+  return Math.hypot(p[0]-a[0]-t*vx,p[1]-a[1]-t*vy);
+}
+function polyLen(pts){let s=0;for(let i=1;i<pts.length;i++)s+=dist(pts[i-1],pts[i]);return s}
+function nearestD(p,poly){let m=1/0;for(let i=1;i<poly.length;i++)m=Math.min(m,segDist(p,poly[i-1],poly[i]));return m}
+function resampleN(pts,n){
+  if(pts.length<2)return pts.slice();
+  const c=[0];for(let i=1;i<pts.length;i++)c.push(c[i-1]+dist(pts[i-1],pts[i]));
+  const L=c[c.length-1],out=[];let j=1;
+  for(let k=0;k<n;k++){
+    const t=k/(n-1)*L;
+    while(j<c.length-1&&c[j]<t)j++;
+    const seg=c[j]-c[j-1],f=seg?(t-c[j-1])/seg:0;
+    out.push([pts[j-1][0]+(pts[j][0]-pts[j-1][0])*f,pts[j-1][1]+(pts[j][1]-pts[j-1][1])*f]);
+  }
+  return out;
+}
+const meanOf=a=>a.reduce((x,y)=>x+y,0)/a.length;
+
 /* ── 輸入 ── */
 function xy(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]}
-const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);
 cv.addEventListener("pointerdown",e=>{
   if(done)return;
   const p=xy(e);
-  const near=anchors.find(a=>dist(p,a)<SNAP);
-  if(!near){toast("從其中一個 ● 開始畫");return}
-  drawing=true;pts=[near.slice()];
+  if(mode==="easy"){
+    const near=anchors.find(a=>dist(p,a)<SNAP);
+    if(!near){toast("從其中一個 ● 開始畫");return}
+    pts=[near.slice()];
+  }else{
+    pts=[p];
+  }
+  drawing=true;
   cv.setPointerCapture(e.pointerId);
   render();
 });
@@ -271,58 +321,97 @@ cv.addEventListener("pointermove",e=>{
 cv.addEventListener("pointerup",()=>{
   if(!drawing)return;
   drawing=false;
-  const start=pts[0],end=pts[pts.length-1];
-  const other=anchors.find(a=>dist(a,start)>1);       // 另一端
-  if(dist(end,other)<SNAP*1.4){pts.push(other.slice());finish()}
-  else{toast("要一路畫到另一個 ● 才算完成");pts=[];render()}
+  if(mode==="easy"){
+    const start=pts[0],end=pts[pts.length-1];
+    const other=anchors.find(a=>dist(a,start)>1);     // 另一端
+    if(dist(end,other)<SNAP*1.4){pts.push(other.slice());finish()}
+    else{toast("要一路畫到另一個 ● 才算完成");pts=[];render()}
+  }else{
+    // 自由畫：太短視為誤觸
+    if(polyLen(pts)<dist(anchors[0],anchors[1])*0.25){toast("線太短了——要畫出整條界線（包含它從哪開始、到哪結束）");pts=[];render()}
+    else finish();
+  }
 });
 
-/* ── 計分：光柵化「口袋 ∩ 聯集」 ── */
-function scoreDraw(){
-  const S=2,off=document.createElement("canvas");
-  off.width=W*S;off.height=H*S;
-  const o=off.getContext("2d");o.scale(S,S);
-  const p2=d3.geoPath(proj,o);
-  // 紅色通道：聯集
-  o.beginPath();p2(cur.unionGeom);o.fillStyle="#f00";o.fill();
-  // 綠色通道：口袋（even-odd）
-  o.globalCompositeOperation="lighter";
-  o.beginPath();
-  pts.forEach((p,k)=>k?o.lineTo(p[0],p[1]):o.moveTo(p[0],p[1]));
-  for(let k=cur.borderPx.length-1;k>=0;k--)o.lineTo(cur.borderPx[k][0],cur.borderPx[k][1]);
-  o.closePath();o.fillStyle="#0f0";o.fill("evenodd");
-  const img=o.getImageData(0,0,off.width,off.height).data;
-  let union=0,wrong=0;
-  for(let i=0;i<img.length;i+=4){
-    if(img[i]>120){union++;if(img[i+1]>120)wrong++}
+/* ── 計分（v2）：弧長對應（Yo 的同位置比同位置）＋對稱最近距離＋P90，
+      寬容區內不扣分，難度尺度＝本題直線亂猜的平均偏移 ── */
+function computeScore(){
+  const K=cur.kmPerPx;
+  const B=resampleN(cur.borderPx,128);
+  const U=resampleN(pts,128);
+  // 對稱最近距離（Chamfer）
+  const dBU=B.map(p=>nearestD(p,pts));
+  const dUB=U.map(p=>nearestD(p,cur.borderPx));
+  const chamKm=(meanOf(dBU)+meanOf(dUB))/2*K;
+  const p90Km=dBU.slice().sort((a,b)=>a-b)[Math.floor(dBU.length*0.9)]*K;
+  // 弧長對應：第 i 點對第 i 點，正反向取優（自由畫可從任一端起筆）
+  const corrF=meanOf(B.map((p,i)=>dist(p,U[i])));
+  const corrR=meanOf(B.map((p,i)=>dist(p,U[U.length-1-i])));
+  const corrKm=Math.min(corrF,corrR)*K;
+  // 綜合偏差：形狀對應（同弧長位置比同位置）＋整體貼合＋最糟段懲罰
+  const D=0.35*corrKm+0.35*chamKm+0.30*p90Km;
+  let base=Math.exp(-Math.max(0,D-cur.gKm)/cur.tauKm);
+  // 自由畫加兩道門：端點準度（起訖位置也是考題）與覆蓋率
+  let endKm=0,cov=1;
+  if(mode==="free"){
+    const b0=cur.borderPx[0],b1=cur.borderPx[cur.borderPx.length-1];
+    const u0=pts[0],u1=pts[pts.length-1];
+    endKm=Math.min((dist(b0,u0)+dist(b1,u1))/2,(dist(b0,u1)+dist(b1,u0))/2)*K;
+    base*=Math.exp(-0.6*Math.max(0,endKm-2*cur.gKm)/cur.tauKm);
+    const corridor=3*cur.tauKm/K;
+    cov=dBU.filter(d=>d<=corridor).length/dBU.length;
+    base*=Math.pow(cov,0.7);
   }
-  return{ratio:union?wrong/union:0,union};
+  return{
+    pct:Math.max(0,Math.min(100,Math.round(base*100))),
+    meanDevKm:chamKm,
+    areaKm2:chamKm*cur.Lkm,      // ≈ ∫偏移 ds，當分享哏不當分數
+    endKm,cov,
+    dbg:{corrKm,chamKm,p90Km,D,gKm:cur.gKm,tauKm:cur.tauKm,dChordKm:cur.dChordKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
+  };
 }
 function finish(){
   done=true;
-  const {ratio}=scoreDraw();
-  const pct=Math.max(0,Math.round((1-ratio)*1000)/10);
-  const km2=cur.unionKm2*ratio;
-  const grade=pct>=97?"🏆 神級":pct>=93?"🥇 在地人":pct>=85?"🥈 有印象":pct>=70?"🥉 大概方向對":"🧭 迷路了";
+  const r=computeScore();
+  const pct=r.pct;
+  const grade=pct>=95?"🏆 神級":pct>=85?"🥇 在地人":pct>=70?"🥈 有印象":pct>=50?"🥉 大概方向對":"🧭 迷路了";
   $("#score").textContent=pct+"%";
   $("#grade").textContent=grade;
-  $("#detail").innerHTML=`你把 <b>${km2<1?km2.toFixed(2):km2<10?km2.toFixed(1):Math.round(km2)} km²</b> 劃給了錯的縣市（兩縣市合計 ${Math.round(cur.unionKm2).toLocaleString()} km²）`;
+  const dev=r.meanDevKm<10?r.meanDevKm.toFixed(1):Math.round(r.meanDevKm);
+  const km2=r.areaKm2<10?r.areaKm2.toFixed(1):Math.round(r.areaKm2);
+  let extra=mode==="free"&&r.endKm>2*cur.gKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
+  $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>（≈ 劃錯 ${km2} km² 的領土）${extra}`;
   $("#result").classList.add("show");
-  cur.lastPct=pct;cur.lastGrade=grade;
+  cur.lastPct=pct;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
   render();
 }
 
 /* ── 工具 ── */
 let toastT;
 function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove("show"),1900)}
+function updateHint(){
+  $("#hint").textContent=mode==="easy"
+    ?"從一個 ● 一筆畫到另一個 ●"
+    :"憑印象一筆畫出整條界線——從哪開始、到哪結束，也是題目的一部分";
+  $("#btnMode").textContent=mode==="easy"?"簡單模式：開":"簡單模式：關";
+}
+$("#btnMode").onclick=()=>{
+  mode=mode==="easy"?"free":"easy";
+  localStorage.setItem("huajie.mode",mode);
+  pts=[];done=false;$("#result").classList.remove("show");
+  updateHint();render();
+  toast(mode==="easy"?"簡單模式：顯示界線兩端 ●，畫線頭尾吸附":"自由畫：整條界線（含起訖）都憑印象");
+};
 $("#btnClear").onclick=()=>{if(done)return;pts=[];render()};
 $("#btnAgain").onclick=()=>{pts=[];done=false;$("#result").classList.remove("show");render()};
 $("#btnNext").onclick=()=>{practice=true;$("#puzzleNo").textContent="練習";loadRound(pool[Math.floor(Math.random()*pool.length)])};
 $("#btnPractice").onclick=()=>$("#btnNext").onclick();
 $("#btnShare").onclick=async()=>{
   const n=$("#puzzleNo").textContent;
-  const blocks=(p=>p>=97?"🟩🟩🟩🟩🟩":p>=85?"🟩🟩🟩🟩⬜":p>=70?"🟩🟩🟩⬜⬜":p>=50?"🟩🟩⬜⬜⬜":"🟩⬜⬜⬜⬜")(cur.lastPct);
-  const txt=`畫界台灣 ${n}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（劃錯 ${Math.round(cur.unionKm2*(1-cur.lastPct/100))} km²）\n${location.origin+location.pathname}`;
+  const blocks=(p=>p>=95?"🟩🟩🟩🟩🟩":p>=85?"🟩🟩🟩🟩⬜":p>=70?"🟩🟩🟩⬜⬜":p>=50?"🟩🟩⬜⬜⬜":"🟩⬜⬜⬜⬜")(cur.lastPct);
+  const devTxt=cur.lastDev<10?cur.lastDev.toFixed(1):Math.round(cur.lastDev);
+  const modeTag=mode==="easy"?"（簡單模式）":"";
+  const txt=`畫界台灣 ${n}${modeTag}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（平均偏 ${devTxt} km）\n${location.origin+location.pathname}`;
   try{
     if(navigator.share)await navigator.share({text:txt});
     else{await navigator.clipboard.writeText(txt);toast("已複製，貼去炫耀吧")}
@@ -340,13 +429,21 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
   new ResizeObserver(resize).observe(cv);
   resize();
   loadRound(pair);
-  // 開發測試鉤子：?test=perfect|offset 自動作答，供 headless 驗計分
-  const testMode=new URLSearchParams(location.search).get("test");
+  // 開發測試鉤子：?test=perfect|offset|chord 自動作答（&mode=easy|free 強制模式），供 headless 驗計分
+  const q=new URLSearchParams(location.search);
+  if(q.get("mode")==="easy"||q.get("mode")==="free"){mode=q.get("mode");updateHint()}
+  const testMode=q.get("test");
   if(testMode){setTimeout(()=>{
-    pts=cur.borderPx.map(p=>testMode==="offset"?[p[0]+30,p[1]+18]:p.slice());
-    if(testMode==="offset"){pts[0]=cur.borderPx[0].slice();pts[pts.length-1]=cur.borderPx[cur.borderPx.length-1].slice()}
+    if(testMode==="chord"){
+      pts=resampleN([anchors[0].slice(),anchors[1].slice()],64);
+    }else{
+      const off=+(q.get("off")||30);
+      pts=cur.borderPx.map(p=>testMode==="offset"?[p[0]+off,p[1]+off*0.6]:p.slice());
+      if(testMode==="offset"){pts[0]=cur.borderPx[0].slice();pts[pts.length-1]=cur.borderPx[cur.borderPx.length-1].slice()}
+    }
     finish();
-    document.title=`TEST ${testMode} score=${cur.lastPct}`;
+    document.title=`TEST ${testMode} ${mode} score=${cur.lastPct}`;
+    if(q.get("debug")){const d=computeScore().dbg;document.title+=" "+Object.entries(d).map(([k,v])=>`${k}=${v.toFixed(2)}`).join(" ")}
   },600)}
 }).catch(e=>{$("#task").textContent="地圖載入失敗："+e.message});
 window.addEventListener("resize",resize);
