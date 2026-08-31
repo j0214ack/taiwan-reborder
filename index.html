@@ -76,9 +76,15 @@ canvas#map{
 #result .btns{display:flex;gap:8px;margin-top:11px}
 
 footer{
-  width:100%;max-width:560px;padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+  width:100%;max-width:560px;padding:10px 16px 6px;
   display:flex;gap:8px;align-items:center;flex:0 0 auto;
 }
+.credit{
+  width:100%;max-width:560px;flex:0 0 auto;text-align:center;
+  padding:0 16px calc(10px + env(safe-area-inset-bottom));
+  font-size:11px;color:var(--ink3);
+}
+.credit a{color:var(--ink2);text-decoration:none;border-bottom:1px solid var(--rule)}
 button{
   font:inherit;font-size:14px;padding:9px 16px;border-radius:8px;cursor:pointer;
   border:1px solid var(--rule);background:#FDFCF8;color:var(--ink);transition:.12s;
@@ -140,6 +146,7 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
   <button id="btnMode">提示：關</button>
   <div class="hint" id="hint"></div>
 </footer>
+<div class="credit">靈感來自 <a href="https://reborder.app" target="_blank" rel="noopener noreferrer">reborder.app</a>・圖資 <a href="https://github.com/dkaoster/taiwan-atlas" target="_blank" rel="noopener noreferrer">taiwan-atlas</a></div>
 
 <script>
 "use strict";
@@ -451,6 +458,7 @@ function finish(){
   $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>（≈ 劃錯 ${km2} km² 的領土）${extra}`;
   $("#result").classList.add("show");
   cur.lastPct=pct;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
+  if(!practice)localStorage.setItem("huajie.dailyDone",taipeiToday());
   revealT0=performance.now();
   requestAnimationFrame(stepReveal);
   render();
@@ -578,9 +586,14 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
   $("#puzzleNo").textContent="#"+n;
   new ResizeObserver(resize).observe(cv);
   resize();
-  loadRound(pair);
-  // 開發測試鉤子：?test=perfect|offset|chord 自動作答（&mode=easy|free 強制模式），供 headless 驗計分
   const q=new URLSearchParams(location.search);
+  // 每日題整天同一題（全站同題才能比分數）。當天已完成→再打開直接進隨機練習，避免重複感
+  if(localStorage.getItem("huajie.dailyDone")===taipeiToday()&&!q.get("test")){
+    practice=true;$("#puzzleNo").textContent="練習";
+    loadRound(pool[Math.floor(Math.random()*pool.length)]);
+    toast("今天的每日題完成過了——來一題隨機練習");
+  }else loadRound(pair);
+  // 開發測試鉤子：?test=perfect|offset|chord 自動作答（&mode=easy|free 強制模式），供 headless 驗計分
   if(q.get("mode")==="easy"||q.get("mode")==="free"){mode=q.get("mode");updateHint()}
   const testMode=q.get("test");
   if(testMode){setTimeout(()=>{
