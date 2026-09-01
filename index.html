@@ -2,18 +2,22 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>畫界台灣 — 畫出消失的縣市界線</title>
 <meta name="description" content="兩個相鄰縣市之間的界線被擦掉了——憑印象把它畫回來，看看你劃錯了幾平方公里。">
 <meta property="og:title" content="畫界台灣 — 畫出消失的縣市界線">
 <meta property="og:description" content="兩個相鄰縣市的界線被擦掉了——憑印象畫回來。">
+<meta property="og:url" content="https://j0214ack.github.io/taiwan-reborder/">
+<meta property="og:image" content="https://j0214ack.github.io/taiwan-reborder/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://j0214ack.github.io/taiwan-reborder/">
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <style>
 :root{
   --paper:#F6F4EC; --paper2:#EFECE1; --ink:#22211C; --ink2:#6B675B; --ink3:#9B968A;
   --rule:#DCD8CA; --land:#E7E2D2; --landline:#4A4638;
-  --me:#C8452F; --truth:#1D6B62; --wrong:rgba(200,69,47,.28);
+  --me:#C8452F; --me-text:#B03A26; --truth:#1D6B62; --wrong:rgba(200,69,47,.28);
   --gold:#8A6A12;
   --sans:"PingFang TC","Noto Sans TC",-apple-system,system-ui,sans-serif;
   --mono:"SF Mono",ui-monospace,Menlo,monospace;
@@ -31,7 +35,7 @@ header{
   display:flex;align-items:baseline;gap:10px;flex:0 0 auto;
 }
 header b{font-size:20px;letter-spacing:.06em}
-header .sub{font-size:12px;color:var(--ink3)}
+header .sub{font-size:12px;color:var(--ink2)}
 header .no{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--ink2)}
 
 #task{
@@ -41,7 +45,9 @@ header .no{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--i
 #task b{color:var(--ink)}
 #task .vs{font-family:var(--mono);color:var(--ink3);padding:0 2px}
 
-#stage{position:relative;width:100%;max-width:560px;flex:1;min-height:0;padding:0 10px}
+#stage{position:relative;width:100%;max-width:560px;flex:1;min-height:170px;padding:0 10px}
+/* 總高塞不下（手機橫式揭曉）時允許整頁捲動，別把地圖壓扁 */
+@media (max-height:560px){body{overflow:auto}}
 #stage,canvas#map{
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
 }
@@ -72,10 +78,11 @@ canvas#map{
 #result .score{font-size:34px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em}
 #result .grade{font-size:15px;margin-left:8px}
 #result .detail{font-size:13px;color:var(--ink2);margin-top:3px;line-height:1.6}
-#result .detail b{color:var(--me)}
+#result .detail b{color:var(--me-text)}
+#result .detail .fine{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px}
 #result .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-top:8px}
 .sw{display:inline-block;width:16px;height:0;border-top:3px solid;vertical-align:middle;margin-right:4px;border-radius:2px}
-#result .btns{display:flex;gap:8px;margin-top:11px}
+#result .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
 
 footer{
   width:100%;max-width:560px;padding:10px 16px 6px;
@@ -84,23 +91,23 @@ footer{
 .credit{
   width:100%;max-width:560px;flex:0 0 auto;text-align:center;
   padding:0 16px calc(10px + env(safe-area-inset-bottom));
-  font-size:11px;color:var(--ink3);
+  font-size:11px;color:var(--ink2);
 }
 .credit a{color:var(--ink2);text-decoration:none;border-bottom:1px solid var(--rule)}
 button{
   font:inherit;font-size:14px;padding:9px 16px;border-radius:8px;cursor:pointer;
   border:1px solid var(--rule);background:#FDFCF8;color:var(--ink);transition:.12s;
-  touch-action:manipulation;
+  touch-action:manipulation;min-height:44px;
 }
 button:hover{border-color:var(--ink3)}
 button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 button.primary:hover{background:#000}
 button:disabled{opacity:.4;cursor:not-allowed}
-footer button{height:38px;padding:0;white-space:nowrap;flex:0 0 auto}
+footer button{height:44px;padding:0;white-space:nowrap;flex:0 0 auto}
 #btnClear{width:64px}
 #btnPractice{width:76px}
 #btnMode{width:96px}
-footer .hint{margin-left:auto;font-size:12px;color:var(--ink3);text-align:right;line-height:1.4}
+footer .hint{margin-left:auto;font-size:12px;color:var(--ink2);text-align:right;line-height:1.4}
 a.coffee{
   font-size:12px;color:var(--ink2);text-decoration:none;white-space:nowrap;
   border:1px solid var(--rule);border-radius:14px;padding:4px 10px;
@@ -117,16 +124,16 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
 <body>
 <header>
   <b>畫界台灣</b><span class="sub">畫出消失的縣市界線</span>
-  <a class="coffee" href="https://buy.stripe.com/dRm6oH8QZcgs9U119d7kc01" target="_blank" rel="noopener">☕ 請我喝咖啡</a>
+  <a class="coffee" href="https://buy.stripe.com/dRm6oH8QZcgs9U119d7kc01" target="_blank" rel="noopener noreferrer">☕ 請我喝咖啡</a>
 </header>
 <div id="task">載入地圖中…</div>
 
 <div id="stage">
-  <canvas id="map"></canvas>
-  <div id="toast"></div>
+  <canvas id="map" aria-label="地圖畫布：用手指或滑鼠畫出兩縣市之間的界線"></canvas>
+  <div id="toast" role="status"></div>
 </div>
 
-<div id="result">
+<div id="result" role="status" aria-live="polite">
   <span class="score" id="score"></span><span class="grade" id="grade"></span>
   <div class="detail" id="detail"></div>
   <div class="legend">
@@ -136,7 +143,7 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
   </div>
   <div class="btns">
     <button class="primary" id="btnShare">分享成績</button>
-    <button id="btnSaveImg">存成績圖</button>
+    <button id="btnSaveImg">複製成績圖</button>
     <button id="btnAgain">再畫一次</button>
     <button id="btnNext">下一題</button>
   </div>
@@ -155,9 +162,15 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
 const $=s=>document.querySelector(s);
 const R_EARTH=6371;                        // km
 let topo,counties,geoms,pool,cur=null;
-let drawing=false,pts=[],done=false;
+let drawing=false,pts=[],done=false,activePtr=null;
+/* localStorage 被瀏覽器封鎖（封鎖全部 cookies）會 throw——包起來別讓整頁死掉 */
+const store={
+  get:k=>{try{return localStorage.getItem(k)}catch{return null}},
+  set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}},
+};
 /* 模式：free＝原版自由畫（預設）；easy＝顯示端點提示 */
-let mode=localStorage.getItem("huajie.mode")==="easy"?"easy":"free";
+let mode=store.get("huajie.mode")==="easy"?"easy":"free";
+const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
 let revealT0=-1e9;                         // 揭曉劃線動畫起點（-1e9＝視為已播完）
 
 /* ── 幾何 ── */
@@ -231,7 +244,12 @@ function loadRound(pair){
     unionKm2:d3.geoArea(union)*R_EARTH*R_EARTH,
   };
   pts=[];done=false;$("#result").classList.remove("show");
-  $("#task").innerHTML=`<b>${cname(a)}</b><span class="vs">×</span><b>${cname(b)}</b> 之間的界線被擦掉了——憑印象把它畫回來。`;
+  // textContent 拼裝（不走 innerHTML——縣市名今日來自受信圖資，防未來資料源改變）
+  const tk=$("#task");tk.textContent="";
+  const bA=document.createElement("b");bA.textContent=cname(a);
+  const vs=document.createElement("span");vs.className="vs";vs.textContent="×";
+  const bB=document.createElement("b");bB.textContent=cname(b);
+  tk.append(bA,vs,bB," 之間的界線被擦掉了——憑印象把它畫回來。");
   fit();render();updateHint();
 }
 
@@ -288,8 +306,8 @@ function render(){
       ctx.beginPath();ctx.arc(a[0],a[1],2.6,0,7);ctx.fillStyle=getCss(done&&mode==="free"?"--truth":"--me");ctx.fill();
     }
   }
-  // 縣市名（揭曉前放質心，揭曉後不變）
-  ctx.font=`600 ${Math.max(15,Math.min(19,W/22))}px ${getCss("--sans")}`;
+  // 縣市名（揭曉前放質心，揭曉後不變）；地圖被壓矮（橫式）時縮小，別蓋滿地圖
+  ctx.font=`600 ${Math.max(H<220?11:15,Math.min(19,W/22))}px ${getCss("--sans")}`;
   ctx.textAlign="center";ctx.textBaseline="middle";
   for(const [f,g] of [[cur.featA,cur.a],[cur.featB,cur.b]]){
     const c=d3.geoPath(proj).centroid(f);
@@ -331,36 +349,44 @@ cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("dblclick",e=>e.preventDefault());
 cv.addEventListener("pointerdown",e=>{
   if(done)return;
+  if(drawing)return;                                  // 第二指誤觸不重設線
   const p=xy(e);
-  if(mode==="easy"){
+  if(pts.length>1&&dist(p,pts[pts.length-1])<SNAP){
+    // 從線尾繼續畫（easy 沒畫到另一端、或 pointercancel 中斷後）
+  }else if(mode==="easy"){
     const near=anchors.find(a=>dist(p,a)<SNAP);
     if(!near){toast("從其中一個 ● 開始畫");return}
     pts=[near.slice()];
   }else{
     pts=[p];
   }
-  drawing=true;
+  drawing=true;activePtr=e.pointerId;
   cv.setPointerCapture(e.pointerId);
   render();
 });
 cv.addEventListener("pointermove",e=>{
-  if(!drawing)return;
+  if(!drawing||e.pointerId!==activePtr)return;
   const p=xy(e);
   if(dist(p,pts[pts.length-1])>2.2){pts.push(p);render()}
 });
-cv.addEventListener("pointerup",()=>{
-  if(!drawing)return;
-  drawing=false;
+cv.addEventListener("pointerup",e=>{
+  if(!drawing||e.pointerId!==activePtr)return;
+  drawing=false;activePtr=null;
   if(mode==="easy"){
     const start=pts[0],end=pts[pts.length-1];
     const other=anchors.find(a=>dist(a,start)>1);     // 另一端
     if(dist(end,other)<SNAP*1.4){pts.push(other.slice());finish()}
-    else{toast("要一路畫到另一個 ● 才算完成");pts=[];render()}
+    else toast("還沒畫到另一個 ●——可以從線尾接著畫");   // 已畫的段保留，別讓一次誤放全部蒸發
   }else{
     // 自由畫：太短視為誤觸
-    if(polyLen(pts)<dist(anchors[0],anchors[1])*0.25){toast("線太短了——要畫出整條界線（包含它從哪開始、到哪結束）");pts=[];render()}
+    if(polyLen(pts)<dist(anchors[0],anchors[1])*0.4){toast("線太短了——要畫出整條界線（包含它從哪開始、到哪結束）");pts=[];render()}
     else finish();
   }
+});
+cv.addEventListener("pointercancel",e=>{
+  // 來電／通知中心手勢打斷：視同放手但保留已畫的線，可從線尾續畫
+  if(e.pointerId!==activePtr)return;
+  drawing=false;activePtr=null;render();
 });
 
 /* ── 計分（v2）：弧長對應（Yo 的同位置比同位置）＋對稱最近距離＋P90，
@@ -406,36 +432,43 @@ function finish(){
   const r=computeScore();
   const pct=r.pct;
   const grade=pct>=95?"🏆 神級":pct>=85?"🥇 在地人":pct>=70?"🥈 有印象":pct>=50?"🥉 大概方向對":"🧭 迷路了";
-  $("#score").textContent=pct+"%";
   $("#grade").textContent=grade;
   const dev=r.meanDevKm<10?r.meanDevKm.toFixed(1):Math.round(r.meanDevKm);
   const km2=r.areaKm2<10?r.areaKm2.toFixed(1):Math.round(r.areaKm2);
+  // 主行只留一個主角（平均偏 km）；換算細節降為小字第二行
   let extra=mode==="free"&&r.endKm>0.02*cur.extentKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
-  $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>＝畫面的 ${r.relPct.toFixed(1)}%（≈ 劃錯 ${km2} km² 的領土）${extra}`;
+  $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>${extra}`+
+    `<span class="fine">＝這張圖對角線的 ${r.relPct.toFixed(1)}%・每偏 2.5% 分數砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
   $("#result").classList.add("show");
   cur.lastPct=pct;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
-  revealT0=performance.now();
+  revealT0=REDUCED?-1e9:performance.now();            // 減少動態：直接顯示終態
+  $("#score").textContent=(REDUCED?pct:0)+"%";
   requestAnimationFrame(stepReveal);
   render();
 }
 function stepReveal(){
   if(!done)return;
+  const el=performance.now()-revealT0;
+  // 分數跟著劃線動畫爬升，別在動畫還沒演完時先暴雷
+  $("#score").textContent=Math.round(cur.lastPct*Math.min(1,Math.max(0,el/1100)))+"%";
   render();
-  if(performance.now()-revealT0<1300)requestAnimationFrame(stepReveal);
+  if(el<1300)requestAnimationFrame(stepReveal);
+  else $("#score").textContent=cur.lastPct+"%";
 }
 
 /* ── 工具 ── */
 let toastT;
-function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove("show"),1900)}
+function toast(t,ms){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove("show"),ms||1900)}
 function updateHint(){
   $("#hint").textContent=mode==="easy"
     ?"從一個 ● 一筆畫到另一個 ●"
     :"憑印象一筆畫出整條界線——從哪開始、到哪結束，也是題目的一部分";
   $("#btnMode").textContent=mode==="easy"?"提示：開":"提示：關";
+  $("#btnMode").setAttribute("aria-pressed",mode==="easy");
 }
 $("#btnMode").onclick=()=>{
   mode=mode==="easy"?"free":"easy";
-  localStorage.setItem("huajie.mode",mode);
+  store.set("huajie.mode",mode);
   pts=[];done=false;$("#result").classList.remove("show");
   updateHint();render();
   toast(mode==="easy"?"提示開啟：顯示界線兩端 ●，畫線頭尾吸附":"提示關閉：整條界線（含起訖）都憑印象");
@@ -448,7 +481,9 @@ function shareText(){
   const blocks=(p=>p>=95?"🟩🟩🟩🟩🟩":p>=85?"🟩🟩🟩🟩⬜":p>=70?"🟩🟩🟩⬜⬜":p>=50?"🟩🟩⬜⬜⬜":"🟩⬜⬜⬜⬜")(cur.lastPct);
   const devTxt=cur.lastDev<10?cur.lastDev.toFixed(1):Math.round(cur.lastDev);
   const modeTag=mode==="easy"?"（提示模式）":"";
-  return`畫界台灣${modeTag}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（平均偏 ${devTxt} km）\n${location.origin+location.pathname}`;
+  // 連結帶題目：接收的人點開直接玩同一題（同題才比得起來）
+  const url=`${location.origin+location.pathname}?pair=${encodeURIComponent(cname(cur.a))},${encodeURIComponent(cname(cur.b))}`;
+  return`畫界台灣${modeTag}\n${cname(cur.a)} × ${cname(cur.b)}\n${blocks} ${cur.lastPct}%（平均偏 ${devTxt} km）\n換你畫這題：${url}`;
 }
 /* ── 成績卡：揭曉畫面合成一張可分享 PNG（1080×1350，純客戶端）── */
 function buildShareCard(){
@@ -508,7 +543,7 @@ $("#btnShare").onclick=()=>withBusy($("#btnShare"),async()=>{
   try{
     if(navigator.share)await navigator.share({text:txt});
     else{await navigator.clipboard.writeText(txt);toast("已複製，貼去炫耀吧")}
-  }catch{}
+  }catch(e){if(e&&e.name!=="AbortError")toast("分享失敗，請再試一次")}
 });
 // 手機（粗指標）share sheet 本來就有「儲存影像」，且 ClipboardItem/download 在手機不可靠→整顆藏掉（Yo 2026-08-31）
 if(matchMedia("(pointer:coarse)").matches)$("#btnSaveImg").style.display="none";
@@ -541,14 +576,23 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
   let pair=pool[Math.floor(Math.random()*pool.length)];
   const pq=q.get("pair");
   if(pq){
-    const [pa,pb]=pq.split(",");
+    // 容錯：臺→台（圖資用「台」）、去空白；找不到明講，別靜默換題
+    const norm=s=>(s||"").trim().replace(/臺/g,"台");
+    const [pa,pb]=pq.split(",").map(norm);
     const hit=pool.find(([i,j])=>{const s=[cname(geoms[i]),cname(geoms[j])];return s.includes(pa)&&s.includes(pb)});
     if(hit)pair=hit;
+    else toast(`找不到「${pa} × ${pb}」這組相鄰縣市，改出隨機題`,3200);
   }
   loadRound(pair);
+  // 第一次玩：提示模式的存在要被看見（Yo 裁定預設仍是自由畫，只做導流不改預設）
+  if(!store.get("huajie.mode")&&!store.get("huajie.seen")&&!q.get("test")){
+    store.set("huajie.seen","1");
+    setTimeout(()=>toast("不知道界線從哪開始？右下角「提示」會標出兩端 ●",3600),900);
+  }
   // 開發測試鉤子：?test=perfect|offset|chord 自動作答（&mode=easy|free 強制模式），供 headless 驗計分
   if(q.get("mode")==="easy"||q.get("mode")==="free"){mode=q.get("mode");updateHint()}
-  const testMode=q.get("test");
+  // 白名單化：test 原值不進 document.title（資安審查 L2——去掉唯一的 URL 參數反射點）
+  const testMode=["perfect","human","chord","offset"].includes(q.get("test"))?q.get("test"):null;
   if(testMode){setTimeout(()=>{
     if(testMode==="chord"){
       pts=resampleN([anchors[0].slice(),anchors[1].slice()],64);
@@ -574,7 +618,13 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
       img.style.cssText="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#555;z-index:99";
       document.body.appendChild(img)},1500)
   },600)}
-}).catch(e=>{$("#task").textContent="地圖載入失敗："+e.message});
+}).catch(()=>{
+  // 人話＋重試（技術訊息如「topojson is not defined」只會誤導）
+  const tk=$("#task");tk.textContent="地圖載入失敗——可能是網路不穩。";
+  const b=document.createElement("button");b.textContent="重新載入";
+  b.style.cssText="margin-left:10px;min-height:34px;padding:4px 14px";
+  b.onclick=()=>location.reload();tk.appendChild(b);
+});
 window.addEventListener("resize",resize);
 </script>
 </body>
