@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>畫界台灣 — 畫出消失的縣市界線</title>
-<meta name="description" content="每天一題：兩個相鄰縣市之間的界線被擦掉了，憑印象把它畫回來，看看你劃錯了幾平方公里。">
+<meta name="description" content="兩個相鄰縣市之間的界線被擦掉了——憑印象把它畫回來，看看你劃錯了幾平方公里。">
 <meta property="og:title" content="畫界台灣 — 畫出消失的縣市界線">
-<meta property="og:description" content="每天一題：兩個相鄰縣市的界線被擦掉了，憑印象畫回來。">
+<meta property="og:description" content="兩個相鄰縣市的界線被擦掉了——憑印象畫回來。">
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <style>
@@ -189,9 +189,13 @@ function resize(){
   if(cur) fit(), render();
 }
 function fit(){
+  const k0=proj?proj.scale():0,t0=proj?proj.translate():null;
   proj=d3.geoMercator();
   const pad=34;
   proj.fitExtent([[pad,pad+6],[W-pad,H-pad-6]],cur.unionFeat);
+  // 使用者已畫的線是像素座標，投影變了（揭曉時面板改變 stage 高度、轉向、拉視窗）要跟著重映射，
+  // 否則線會離界飄移；Mercator fitExtent 只差等比縮放＋平移，仿射轉換精確
+  if(t0&&pts.length){const f=proj.scale()/k0,t=proj.translate();pts=pts.map(p=>[(p[0]-t0[0])*f+t[0],(p[1]-t0[1])*f+t[1]])}
   path=d3.geoPath(proj,ctx);
   cur.borderPx=cur.borderGeo.map(p=>proj(p));
   anchors=[cur.borderPx[0],cur.borderPx[cur.borderPx.length-1]];
