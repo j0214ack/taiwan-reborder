@@ -362,7 +362,7 @@ function buildShareCard(){
   g.fillStyle=getCss("--ink3");g.font=`500 36px ${getCss("--mono")}`;
   g.fillText(location.origin+location.pathname,M,1282);
   g.fillStyle=getCss("--ink3");g.font=`400 26px ${sans}`;
-  g.fillText("本 App 靈感來源自 reborder.app",M,1326);
+  g.fillText("本 App 靈感來源自 reborder.app・作者 yo-chen.dev",M,1326);
   return c;
 }
 const cardBlob=()=>new Promise(r=>buildShareCard().toBlob(r,"image/png"));
