@@ -58,6 +58,9 @@ function fit(){
   cur.kmPerPx=cur.Lkm/Math.max(1e-6,polyLen(cur.borderPx));
   const bb=d3.geoPath(proj).bounds(cur.unionFeat);
   cur.extentKm=Math.hypot(bb[1][0]-bb[0][0],bb[1][1]-bb[0][1])*cur.kmPerPx;
+  // 計分尺度＝界線本身的大小（界線外框對角線，km）——不是整張圖：短界線題才不會「畫什麼都差不多」
+  const xs=cur.borderPx.map(p=>p[0]),ys=cur.borderPx.map(p=>p[1]);
+  cur.borderKm=Math.max(1e-6,Math.hypot(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys))*cur.kmPerPx);
 }
 function haversineKm(p,q){
   const rad=Math.PI/180;
@@ -241,17 +244,17 @@ function trimToBorder(U){
   const lo=Math.min(i0,i1),hi=Math.max(i0,i1);
   return hi-lo>=8?U.slice(lo,hi+1):U;
 }
-/* 計分 v3（Yo 2026-08-31 四題實玩校準，反 overfitting：單一參數）：
-   「你的線平均偏離真實界線多遠」÷「這張圖有多大」＝畫面百分比偏移 rel，
-   每偏畫面對角線的 2.5%，分數砍半：score = 100·2^(−rel/2.5%)。
-   平均偏離＝對稱最近距離（雙向取樣平均）；超畫過端點的尾巴先裁掉不計（起訖偏移只顯示不扣分）。
-   沒畫到的界線段落會自然拉高偏離（界線端點找不到近的使用者線），不需要另設覆蓋率／端點懲罰。 */
-const HALF_REL=0.025;
-/* v3.1（Yo 2026-09-09 選定）：「一指寬」寬容區——每個取樣點的偏差先扣掉畫面對角線的 0.9%（手機上約 6px）、
-   不足歸零再平均。整條均勻差一指寬≈免費；局部大歪照罰。也順便解掉「小螢幕同樣手誤被扣更多」的不公平。 */
-const TOL_REL=0.009;
+/* 計分 v4（Yo 2026-09-09 定案）：「你的線偏離真實界線多遠」÷「這條界線本身的大小」＝相對偏移。
+   - 尺度＝界線外框對角線（不是整張圖）：Yo 的直覺是「偏了界線本身的百分之幾」；用整張圖當尺度時，
+     短界線題（新竹宜蘭）整條起伏只有一指寬，直線亂猜也拿 90。
+   - 「一指寬」寬容區：每個取樣點的偏差先扣掉 TOL_REL、不足歸零再雙向平均——整條均勻差一點幾乎免費，局部大歪照罰。
+   - 分數＝100·2^(−相對偏移/HALF_REL)。兩個參數，皆可用 ?tol=&half=（百分比）暫時覆寫供校準。
+   平均偏離＝對稱最近距離；超畫過端點的尾巴先裁掉不計（起訖偏移只顯示不扣分）。 */
+const _q0=new URLSearchParams(location.search);
+const HALF_REL=(+_q0.get("half")||6)/100;
+const TOL_REL=(+_q0.get("tol")||1.5)/100;
 function computeScore(){
-  const K=cur.kmPerPx,E=cur.extentKm;
+  const K=cur.kmPerPx,E=cur.borderKm;
   const B=resampleN(cur.borderPx,128);
   const Ut=trimToBorder(resampleN(pts,128));
   const U=resampleN(Ut,128);
@@ -271,7 +274,7 @@ function computeScore(){
     relPct:rel*100,
     areaKm2:chamKm*cur.Lkm,      // ≈ ∫偏移 ds，當分享哏不當分數
     endKm,
-    dbg:{chamKm,rel:rel*100,relEff:relEff*100,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
+    dbg:{chamKm,rel:rel*100,relEff:relEff*100,borderKm:cur.borderKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
   };
 }
 function finish(){
@@ -283,9 +286,9 @@ function finish(){
   const dev=r.meanDevKm<10?r.meanDevKm.toFixed(1):Math.round(r.meanDevKm);
   const km2=r.areaKm2<10?r.areaKm2.toFixed(1):Math.round(r.areaKm2);
   // 主行只留一個主角（平均偏 km）；換算細節降為小字第二行
-  let extra=mode==="free"&&r.endKm>0.02*cur.extentKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
+  let extra=mode==="free"&&r.endKm>0.05*cur.borderKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
   $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>${extra}`+
-    `<span class="fine">＝這張圖對角線的 ${r.relPct.toFixed(1)}%・一指寬（0.9%）內不扣、超出部分每 2.5% 砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
+    `<span class="fine">＝這條界線大小的 ${r.relPct.toFixed(1)}%・一指寬（${(TOL_REL*100).toFixed(1)}%）內不扣、超出部分每 ${(HALF_REL*100).toFixed(1)}% 砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
   $("#result").classList.add("show");
   cur.lastPct=pct;cur.lastPctRaw=r.pctRaw;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
   revealT0=REDUCED?-1e9:performance.now();            // 減少動態：直接顯示終態
