@@ -2,7 +2,8 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<!-- CSP：只放行自家檔＋Cloudflare 站台分析 beacon（yo-chen.dev 由 Cloudflare 自動注入；無 cookie） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cloudflareinsights.com; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>畫界台灣 — 畫出消失的縣市界線</title>
 <meta name="description" content="兩個相鄰縣市之間的界線被擦掉了——憑印象把它畫回來，看看你劃錯了幾平方公里。">
