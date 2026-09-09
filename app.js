@@ -214,6 +214,14 @@ document.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
    touch-action:none 對它們不夠——touch 事件直接取消預設（非 passive）。畫線中手指滑出畫布也擋（Yo 2026-09-09 上線急修） */
 for(const t of ["touchstart","touchmove"])cv.addEventListener(t,e=>e.preventDefault(),{passive:false});
 document.addEventListener("touchmove",e=>{if(drawing)e.preventDefault()},{passive:false});
+/* 常駐捲在 1px：body 比視窗高 2px（見 CSS），原生「下拉關閉」只在 scrollTop==0 時啟動 */
+const pin1=()=>{if(window.scrollY<1&&document.documentElement.scrollHeight>window.innerHeight)window.scrollTo(0,1)};
+window.addEventListener("scroll",pin1,{passive:true});window.addEventListener("load",pin1);setTimeout(pin1,50);
+/* 第三層：偵測 Meta 內建瀏覽器（Threads＝Barcelona／Messenger／Instagram／Facebook），提示改用瀏覽器開啟 */
+if(/FBAN|FBAV|FB_IAB|Instagram|Barcelona|MessengerForiOS/i.test(navigator.userAgent)&&!store.get("huajie.iabDismissed")){
+  $("#iab").hidden=false;
+  $("#iabClose").onclick=()=>{$("#iab").hidden=true;store.set("huajie.iabDismissed","1")};
+}
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("dblclick",e=>e.preventDefault());
 let entered=false,clipped=false,lastRaw=null;
