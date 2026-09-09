@@ -247,25 +247,31 @@ function trimToBorder(U){
    平均偏離＝對稱最近距離（雙向取樣平均）；超畫過端點的尾巴先裁掉不計（起訖偏移只顯示不扣分）。
    沒畫到的界線段落會自然拉高偏離（界線端點找不到近的使用者線），不需要另設覆蓋率／端點懲罰。 */
 const HALF_REL=0.025;
+/* v3.1（Yo 2026-09-09 選定）：「一指寬」寬容區——每個取樣點的偏差先扣掉畫面對角線的 0.9%（手機上約 6px）、
+   不足歸零再平均。整條均勻差一指寬≈免費；局部大歪照罰。也順便解掉「小螢幕同樣手誤被扣更多」的不公平。 */
+const TOL_REL=0.009;
 function computeScore(){
-  const K=cur.kmPerPx;
+  const K=cur.kmPerPx,E=cur.extentKm;
   const B=resampleN(cur.borderPx,128);
   const Ut=trimToBorder(resampleN(pts,128));
   const U=resampleN(Ut,128);
   const dBU=B.map(p=>nearestD(p,Ut));
   const dUB=U.map(p=>nearestD(p,cur.borderPx));
-  const chamKm=(meanOf(dBU)+meanOf(dUB))/2*K;
-  const rel=chamKm/cur.extentKm;
+  const chamKm=(meanOf(dBU)+meanOf(dUB))/2*K;   // 誠實量測：未扣寬容的平均偏離
+  const rel=chamKm/E;
+  const excess=d=>Math.max(0,d*K/E-TOL_REL);
+  const relEff=(meanOf(dBU.map(excess))+meanOf(dUB.map(excess)))/2;
   const b0=cur.borderPx[0],b1=cur.borderPx[cur.borderPx.length-1];
   const u0=pts[0],u1=pts[pts.length-1];
   const endKm=Math.min((dist(b0,u0)+dist(b1,u1))/2,(dist(b0,u1)+dist(b1,u0))/2)*K;
   return{
-    pct:Math.max(0,Math.min(100,Math.round(100*Math.pow(2,-rel/HALF_REL)))),
+    pct:Math.max(0,Math.min(100,Math.round(100*Math.pow(2,-relEff/HALF_REL)))),
+    pctRaw:Math.max(0,Math.min(100,Math.round(100*Math.pow(2,-rel/HALF_REL)))),   // v3（無寬容）對照用
     meanDevKm:chamKm,
     relPct:rel*100,
     areaKm2:chamKm*cur.Lkm,      // ≈ ∫偏移 ds，當分享哏不當分數
     endKm,
-    dbg:{chamKm,rel:rel*100,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
+    dbg:{chamKm,rel:rel*100,relEff:relEff*100,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
   };
 }
 function finish(){
@@ -279,9 +285,9 @@ function finish(){
   // 主行只留一個主角（平均偏 km）；換算細節降為小字第二行
   let extra=mode==="free"&&r.endKm>0.02*cur.extentKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
   $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>${extra}`+
-    `<span class="fine">＝這張圖對角線的 ${r.relPct.toFixed(1)}%・每偏 2.5% 分數砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
+    `<span class="fine">＝這張圖對角線的 ${r.relPct.toFixed(1)}%・一指寬（0.9%）內不扣、超出部分每 2.5% 砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
   $("#result").classList.add("show");
-  cur.lastPct=pct;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
+  cur.lastPct=pct;cur.lastPctRaw=r.pctRaw;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
   revealT0=REDUCED?-1e9:performance.now();            // 減少動態：直接顯示終態
   $("#score").textContent=(REDUCED?pct:0)+"%";
   requestAnimationFrame(stepReveal);
@@ -433,27 +439,40 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
   // 開發測試鉤子：?test=perfect|offset|chord 自動作答（&mode=easy|free 強制模式），供 headless 驗計分
   if(q.get("mode")==="easy"||q.get("mode")==="free"){mode=q.get("mode");updateHint()}
   // 白名單化：test 原值不進 document.title（資安審查 L2——去掉唯一的 URL 參數反射點）
-  const testMode=["perfect","human","chord","offset"].includes(q.get("test"))?q.get("test"):null;
+  const testMode=["perfect","human","chord","offset","close","half","mirror","bulge"].includes(q.get("test"))?q.get("test"):null;
   if(testMode){setTimeout(()=>{
+    // 八種畫法（給計分校準用）：perfect 完美描／close 差一點點／human 接近／offset 整條偏／half 前半對後半直線／chord 直線亂猜／mirror 形狀翻面／bulge 離譜大彎
+    const B=resampleN(cur.borderPx,128),a0=anchors[0],a1=anchors[1];
+    const cx=a1[0]-a0[0],cy=a1[1]-a0[1],cl=Math.hypot(cx,cy)||1,nx=-cy/cl,ny=cx/cl;   // 弦方向、法線
+    let seed=[...(cname(cur.a)+cname(cur.b))].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,7);  // 同題同結果
+    const rnd=()=>{seed=(seed+0x6D2B79F5)>>>0;let t=seed;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296};
+    const smooth=(P,k)=>P.map((p,i)=>{let sx=0,sy=0,n=0;for(let j=-k;j<=k;j++){const m=Math.max(0,Math.min(P.length-1,i+j));sx+=P[m][0];sy+=P[m][1];n++}return[sx/n,sy/n]});
     if(testMode==="chord"){
-      pts=resampleN([anchors[0].slice(),anchors[1].slice()],64);
+      pts=resampleN([a0.slice(),a1.slice()],64);
     }else if(testMode==="human"){
       // 仿真人：只記得大形狀（重度平滑）＋側偏 6px＋尾巴超畫 40px（Yo 2026-08-31 實玩特徵）
-      const B=resampleN(cur.borderPx,128);
-      const S=B.map((p,i)=>{let sx=0,sy=0,n=0;
-        for(let k=-7;k<=7;k++){const j=Math.max(0,Math.min(127,i+k));sx+=B[j][0];sy+=B[j][1];n++}
-        return[sx/n+6,sy/n+4]});
+      const S=smooth(B,7).map(p=>[p[0]+6,p[1]+4]);
       const last=S[S.length-1],prev=S[S.length-4];
       const dx=last[0]-prev[0],dy=last[1]-prev[1],L=Math.hypot(dx,dy)||1;
       for(let k=1;k<=5;k++)S.push([last[0]+dx/L*k*8,last[1]+dy/L*k*8]);
       pts=S;
+    }else if(testMode==="close"){
+      // 差一點點：沿界線 ±4px 的平滑手抖
+      let w=0;pts=smooth(B.map(p=>{w=Math.max(-4,Math.min(4,w+(rnd()-0.5)*2.5));return[p[0]+w*nx,p[1]+w*ny]}),2);
+    }else if(testMode==="half"){
+      pts=B.slice(0,64).concat([B[127].slice()]);            // 前半照描、後半偷懶拉直線
+    }else if(testMode==="mirror"){
+      pts=B.map(p=>{const d=(p[0]-a0[0])*nx+(p[1]-a0[1])*ny;return[p[0]-2*d*nx,p[1]-2*d*ny]});   // 形狀對但翻到弦的另一側
+    }else if(testMode==="bulge"){
+      const side=Math.sign(B.reduce((t,p)=>t+(p[0]-a0[0])*nx+(p[1]-a0[1])*ny,0))||1;             // 離譜：往界線反側鼓一個大彎
+      pts=Array.from({length:64},(_,i)=>{const t=i/63,A=-side*0.35*cl*Math.sin(Math.PI*t);return[a0[0]+cx*t+A*nx,a0[1]+cy*t+A*ny]});
     }else{
       const off=+(q.get("off")||30);
       pts=cur.borderPx.map(p=>testMode==="offset"?[p[0]+off,p[1]+off*0.6]:p.slice());
       if(testMode==="offset"){pts[0]=cur.borderPx[0].slice();pts[pts.length-1]=cur.borderPx[cur.borderPx.length-1].slice()}
     }
     finish();
-    document.title=`TEST ${testMode} ${mode} score=${cur.lastPct}`;
+    document.title=`TEST ${testMode} ${mode} score=${cur.lastPct} raw=${cur.lastPctRaw}`;
     if(q.get("debug")){const d=computeScore().dbg;document.title+=" "+Object.entries(d).map(([k,v])=>`${k}=${v.toFixed(2)}`).join(" ")}
     if(q.get("card"))setTimeout(()=>{const img=new Image();img.src=buildShareCard().toDataURL("image/png");
       img.style.cssText="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#555;z-index:99";
