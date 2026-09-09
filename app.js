@@ -253,6 +253,10 @@ function trimToBorder(U){
 const _q0=new URLSearchParams(location.search);
 const HALF_REL=(+_q0.get("half")||6)/100;
 const TOL_REL=(+_q0.get("tol")||1.5)/100;
+/* 寬容區＝「螢幕上一指寬」：取畫面對角線 TOL_PIC 與界線大小 TOL_REL 兩者較大者（km）。
+   短界線題（桃園宜蘭、台中花蓮：界線只有幾公里）貼著畫本來就該高分——一指寬不因界線短就縮小；
+   超出一指寬的部分才用「界線本身的大小」算扣分，畫明顯歪掉照樣重罰。（Yo 2026-09-09 桃園宜蘭 39→應 80） */
+const TOL_PIC=(_q0.has("tolpic")?+_q0.get("tolpic"):0.9)/100;
 function computeScore(){
   const K=cur.kmPerPx,E=cur.borderKm;
   const B=resampleN(cur.borderPx,128);
@@ -262,7 +266,8 @@ function computeScore(){
   const dUB=U.map(p=>nearestD(p,cur.borderPx));
   const chamKm=(meanOf(dBU)+meanOf(dUB))/2*K;   // 誠實量測：未扣寬容的平均偏離
   const rel=chamKm/E;
-  const excess=d=>Math.max(0,d*K/E-TOL_REL);
+  const tolKm=Math.max(TOL_REL*E,TOL_PIC*cur.extentKm);
+  const excess=d=>Math.max(0,d*K-tolKm)/E;
   const relEff=(meanOf(dBU.map(excess))+meanOf(dUB.map(excess)))/2;
   const b0=cur.borderPx[0],b1=cur.borderPx[cur.borderPx.length-1];
   const u0=pts[0],u1=pts[pts.length-1];
@@ -274,7 +279,7 @@ function computeScore(){
     relPct:rel*100,
     areaKm2:chamKm*cur.Lkm,      // ≈ ∫偏移 ds，當分享哏不當分數
     endKm,
-    dbg:{chamKm,rel:rel*100,relEff:relEff*100,borderKm:cur.borderKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
+    dbg:{chamKm,rel:rel*100,relEff:relEff*100,tolKm,borderKm:cur.borderKm,extentKm:cur.extentKm,kmPerPx:cur.kmPerPx},
   };
 }
 function finish(){
@@ -288,7 +293,7 @@ function finish(){
   // 主行只留一個主角（平均偏 km）；換算細節降為小字第二行
   let extra=mode==="free"&&r.endKm>0.05*cur.borderKm?`；起訖點偏了約 ${r.endKm.toFixed(1)} km`:"";
   $("#detail").innerHTML=`你的線平均偏離真實界線 <b>${dev} km</b>${extra}`+
-    `<span class="fine">＝這條界線大小的 ${r.relPct.toFixed(1)}%・一指寬（${(TOL_REL*100).toFixed(1)}%）內不扣、超出部分每 ${(HALF_REL*100).toFixed(1)}% 砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
+    `<span class="fine">＝這條界線大小的 ${r.relPct.toFixed(1)}%・一指寬內不扣、超出部分每 ${(HALF_REL*100).toFixed(1)}% 砍半・≈ 劃錯 ${km2} km² 的領土</span>`;
   $("#result").classList.add("show");
   cur.lastPct=pct;cur.lastPctRaw=r.pctRaw;cur.lastGrade=grade;cur.lastDev=r.meanDevKm;cur.lastKm2=r.areaKm2;
   revealT0=REDUCED?-1e9:performance.now();            // 減少動態：直接顯示終態
