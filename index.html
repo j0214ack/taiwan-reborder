@@ -15,8 +15,9 @@
 <link rel="canonical" href="https://yo-chen.dev/games/taiwan-reborder/">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🗺️</text></svg>">
 <!-- d3/topojson 自我託管（資安審查 M1：去 CDN 依賴，SRI 免疫＋「無追蹤」滴水不漏）；版本 d3@7.9.0 / topojson-client@3.1.0 -->
-<script src="vendor/d3.min.js"></script>
-<script src="vendor/topojson-client.min.js"></script>
+<link rel="preload" href="counties-10t.json" as="fetch" crossorigin>
+<script src="vendor/d3.min.js" defer></script>
+<script src="vendor/topojson-client.min.js" defer></script>
 <style>
 :root{
   --paper:#F6F4EC; --paper2:#EFECE1; --ink:#22211C; --ink2:#6B675B; --ink3:#9B968A;
@@ -49,6 +50,7 @@ header .no{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--i
 #task b{color:var(--ink)}
 #task .vs{font-family:var(--mono);color:var(--ink3);padding:0 2px}
 
+main{display:flex;flex-direction:column;align-items:center;width:100%;flex:1;min-height:0}
 #stage{position:relative;width:100%;max-width:560px;flex:1;min-height:170px;padding:0 10px}
 /* 總高塞不下（手機橫式揭曉）時允許整頁捲動，別把地圖壓扁 */
 @media (max-height:560px){body{overflow:auto}}
@@ -78,12 +80,12 @@ canvas#map{
   box-shadow:0 8px 28px rgba(30,28,20,.14);
 }
 #result.show{display:block}
-#result.show~footer,#result.show~.credit{display:none}
+body:has(#result.show) footer,body:has(#result.show) .credit{display:none}
 #result .score{font-size:34px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em}
 #result .grade{font-size:15px;margin-left:8px}
 #result .detail{font-size:13px;color:var(--ink2);margin-top:3px;line-height:1.6}
 #result .detail b{color:var(--me-text)}
-#result .detail .fine{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px}
+#result .detail .fine{display:block;font-size:12px;color:var(--ink3);margin-top:2px}
 #result .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-top:8px}
 .sw{display:inline-block;width:16px;height:0;border-top:3px solid;vertical-align:middle;margin-right:4px;border-radius:2px}
 #result .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
@@ -95,7 +97,7 @@ footer{
 .credit{
   width:100%;max-width:560px;flex:0 0 auto;text-align:center;
   padding:0 16px calc(10px + env(safe-area-inset-bottom));
-  font-size:11px;color:var(--ink2);
+  font-size:12px;color:var(--ink2);
 }
 .credit a{color:var(--ink2);text-decoration:none;border-bottom:1px solid var(--rule)}
 button{
@@ -130,6 +132,7 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
   <b>畫界台灣</b><span class="sub">畫出消失的縣市界線</span>
   <a class="coffee" href="https://buy.stripe.com/dRm6oH8QZcgs9U119d7kc01" target="_blank" rel="noopener noreferrer">☕ 請我喝咖啡</a>
 </header>
+<main id="main">
 <div id="task">載入地圖中…</div>
 
 <div id="stage">
@@ -152,6 +155,7 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
     <button id="btnNext">下一題</button>
   </div>
 </div>
+</main>
 
 <footer>
   <button id="btnClear">重畫</button>
@@ -161,6 +165,6 @@ a.coffee:hover{border-color:var(--ink3);color:var(--ink)}
 </footer>
 <div class="credit">靈感來自 <a href="https://reborder.app" target="_blank" rel="noopener noreferrer">reborder.app</a>・圖資 <a href="https://github.com/dkaoster/taiwan-atlas" target="_blank" rel="noopener noreferrer">taiwan-atlas</a>・作者 <a href="https://yo-chen.dev" target="_blank" rel="noopener">Yo Chen</a></div>
 
-<script src="app.js"></script>
+<script src="app.js" defer></script>
 </body>
 </html>
