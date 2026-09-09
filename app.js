@@ -210,6 +210,10 @@ function clipToLand(P){                        // 整條折線版（機器人畫
 /* ── 輸入 ── */
 function xy(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]}
 document.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
+/* 內建瀏覽器（Messenger／Threads／IG 的 WKWebView）會把畫布上的下拉當成「頁面下拉／關閉視窗」，
+   touch-action:none 對它們不夠——touch 事件直接取消預設（非 passive）。畫線中手指滑出畫布也擋（Yo 2026-09-09 上線急修） */
+for(const t of ["touchstart","touchmove"])cv.addEventListener(t,e=>e.preventDefault(),{passive:false});
+document.addEventListener("touchmove",e=>{if(drawing)e.preventDefault()},{passive:false});
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("dblclick",e=>e.preventDefault());
 let entered=false,clipped=false,lastRaw=null;
