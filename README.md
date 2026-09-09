@@ -4,7 +4,7 @@
 
 隨機一題接一題。畫完告訴你平均偏了幾公里、把哪塊土地劃給了錯的縣市。
 
-👉 **[開始玩](https://j0214ack.github.io/taiwan-reborder/)**
+👉 **[開始玩](https://yo-chen.dev/games/taiwan-reborder/)**（鏡像：https://j0214ack.github.io/taiwan-reborder/）
 
 玩法啟發自 [reborder.app](https://reborder.app)（Draw the missing border between neighbouring countries）的台灣縣市版。
 
