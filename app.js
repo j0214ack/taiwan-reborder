@@ -186,36 +186,69 @@ function resampleN(pts,n){
 }
 const meanOf=a=>a.reduce((x,y)=>x+y,0)/a.length;
 
+/* ── 陸地邊界裁切（Yo 2026-09-09：尾巴從源頭砍，碰到邊界就不算）──
+   界線兩端本來就落在兩縣市聯集的外緣，所以「線碰到外緣」＝畫到頭了；之後的部分（畫進海裡、畫過頭）不記錄。
+   起筆在陸地外也一樣：從進入陸地那一點才開始算。 */
+const inLand=p=>d3.geoContains(cur.unionGeom,proj.invert(p));
+function landCross(a,b){                       // a 在陸地內、b 在外（或反之）：二分找邊界交點
+  let lo=a,hi=b;
+  for(let i=0;i<10;i++){const m=[(lo[0]+hi[0])/2,(lo[1]+hi[1])/2];if(inLand(m)===inLand(a))lo=m;else hi=m}
+  return[(lo[0]+hi[0])/2,(lo[1]+hi[1])/2];
+}
+const CLIP_GATE=12;                            // 起筆頭幾像素不裁：錨點就在邊界上，手抖一下別馬上被切
+function clipToLand(P){                        // 整條折線版（機器人畫法用）：取「第一次進陸地」到「第一次出陸地」
+  const out=[];let entered=false;
+  for(let i=0;i<P.length;i++){
+    const p=P[i],inside=inLand(p);
+    if(!entered){if(inside){if(i>0)out.push(landCross(P[i-1],p));out.push(p);entered=true}continue}
+    if(inside)out.push(p);
+    else if(polyLen(out)>CLIP_GATE){out.push(landCross(out[out.length-1],p));break}
+  }
+  return out.length>1?out:P;
+}
+
 /* ── 輸入 ── */
 function xy(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]}
 document.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("dblclick",e=>e.preventDefault());
+let entered=false,clipped=false,lastRaw=null;
 cv.addEventListener("pointerdown",e=>{
   if(done)return;
   if(drawing)return;                                  // 第二指誤觸不重設線
   const p=xy(e);
+  clipped=false;lastRaw=p;
   if(pts.length>1&&dist(p,pts[pts.length-1])<SNAP){
-    // 從線尾繼續畫（easy 沒畫到另一端、或 pointercancel 中斷後）
+    entered=true;                                     // 從線尾繼續畫（easy 沒畫到另一端、或 pointercancel 中斷後）
   }else if(mode==="easy"){
     const near=anchors.find(a=>dist(p,a)<SNAP);
     if(!near){toast("從其中一個 ● 開始畫");return}
-    pts=[near.slice()];
+    pts=[near.slice()];entered=true;
   }else{
-    pts=[p];
+    entered=inLand(p);pts=entered?[p]:[];             // 起筆在海裡：進陸地那點才開始算
   }
   drawing=true;activePtr=e.pointerId;
   cv.setPointerCapture(e.pointerId);
   render();
 });
 cv.addEventListener("pointermove",e=>{
-  if(!drawing||e.pointerId!==activePtr)return;
+  if(!drawing||clipped||e.pointerId!==activePtr)return;
   const p=xy(e);
-  if(dist(p,pts[pts.length-1])>2.2){pts.push(p);render()}
+  if(!entered){
+    if(inLand(p)){pts=[landCross(lastRaw,p),p];entered=true;render()}
+    lastRaw=p;return;
+  }
+  const tail=pts[pts.length-1];
+  if(dist(p,tail)<=2.2)return;
+  if(inLand(p))pts.push(p);
+  else if(polyLen(pts)>CLIP_GATE){pts.push(landCross(tail,p));clipped=true}   // 碰到邊界＝畫到頭，之後不算
+  else return;
+  render();
 });
 cv.addEventListener("pointerup",e=>{
   if(!drawing||e.pointerId!==activePtr)return;
   drawing=false;activePtr=null;
+  if(!pts.length){toast("要畫在陸地上——線碰到海岸就停止記錄");render();return}
   if(mode==="easy"){
     const start=pts[0],end=pts[pts.length-1];
     const other=anchors.find(a=>dist(a,start)>1);     // 另一端
@@ -479,6 +512,7 @@ fetch("counties-10t.json").then(r=>r.json()).then(t=>{
       pts=cur.borderPx.map(p=>testMode==="offset"?[p[0]+off,p[1]+off*0.6]:p.slice());
       if(testMode==="offset"){pts[0]=cur.borderPx[0].slice();pts[pts.length-1]=cur.borderPx[cur.borderPx.length-1].slice()}
     }
+    pts=clipToLand(pts);                              // 機器人也照「碰到邊界就不算」
     finish();
     document.title=`TEST ${testMode} ${mode} score=${cur.lastPct} raw=${cur.lastPctRaw}`;
     if(q.get("debug")){const d=computeScore().dbg;document.title+=" "+Object.entries(d).map(([k,v])=>`${k}=${v.toFixed(2)}`).join(" ")}
