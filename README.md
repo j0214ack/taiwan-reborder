@@ -34,6 +34,8 @@
 - 分享：純客戶端合成 1080×1350 成績卡 PNG（揭曉畫面＋分數＋偏差）。系統分享面板能「圖＋文」就一起送；只能擇一時**文字優先**；「複製成績圖」可複製到剪貼簿或下載。無資料庫、無上傳
 - 純前端靜態站（`index.html`＋`app.js`），D3 與 topojson-client **自我託管**（`vendor/`，pin d3@7.9.0／topojson-client@3.1.0）——無後端、無 cookie、無第三方追蹤（正式站 yo-chen.dev 由 Cloudflare 注入無 cookie 的站台分析 beacon，CSP 僅放行它），並配 meta CSP
 - 圖資：[taiwan-atlas](https://github.com/dkaoster/taiwan-atlas)（內政部縣市界 TopoJSON）
+- 內建瀏覽器（Threads／Messenger／IG）會把畫布上的下拉手勢當成「下拉關閉視窗」，`touch-action:none` 擋不住：本專案用三層——畫布 touch 事件非 passive 的 `preventDefault`、頁面比視窗高 2px 並常駐捲在 1px（原生手勢只在最頂端接管）、偵測到內建瀏覽器時顯示「在瀏覽器中開啟」提示。真機確認有效（2026-09-09）
+- 部署到 Cloudflare Pages 時 `.js`／`.json` 會被快取 4 小時（HTML 才即時）：發布腳本會自動給 script 網址加內容雜湊版本號，否則修好的 JS 使用者 4 小時內拿不到
 
 ## 本機跑
 
